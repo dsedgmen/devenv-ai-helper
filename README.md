@@ -114,6 +114,14 @@ GitHub Actions:
 
 Full process: **[RELEASE.md](RELEASE.md)**.
 
+## Consumers
+
+| Project | Role |
+|---------|------|
+| [vim-ai-assistant](https://github.com/dsedgmen/vim-ai-assistant) | Vim/Neovim configs that invoke this CLI |
+| [vim-ai-packaging](https://github.com/dsedgmen/vim-ai-packaging) | Container/Flatpak builds (stages this binary) |
+| [devenv](https://github.com/dsedgmen/devenv) | Stages helper into images/VMs |
+
 ## Contributing / coding agents
 
 See **[AGENTS.md](AGENTS.md)** for how automated coding agents and humans should

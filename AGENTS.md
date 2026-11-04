@@ -11,8 +11,8 @@ This file is **for developers/agents modifying the project**. It is not the runt
 (complete, explain, review, refactor, generate, chat). It routes those calls to
 Ollama / Claude / Gemini / OpenAI-compatible APIs, including internal gateways.
 
-Consumers: `vim-ai-assistant`, `devenv` images, and local installs via RPM or
-`~/.local/bin`.
+Consumers: `vim-ai-assistant` (editor), `vim-ai-packaging` (images/Flatpak),
+`devenv` images/VMs, and local installs via RPM or `~/.local/bin`.
 
 ## Non-negotiable constraints
 
@@ -70,8 +70,9 @@ Consumers: `vim-ai-assistant`, `devenv` images, and local installs via RPM or
 
 ## Interaction with sibling projects
 
-- **vim-ai-assistant** — editor configs; may vendor or PATH-resolve this binary. Prefer documenting the dependency over copying large script forks.
-- **devenv** — stages or installs the helper into isolated envs. Keep env var names (`VIM_AI_*`, `ANTHROPIC_API_KEY`, …) stable for SSH `SendEnv`.
+- **vim-ai-assistant** — editor configs; PATH/RPM/sibling-resolve this binary (do not re-vendor a fork there).
+- **vim-ai-packaging** — stages this binary into container/Flatpak build context via `prepare-build-context.sh`.
+- **devenv** — stages or installs the helper into isolated envs from sibling/`VIM_AI_HELPER_DIR`/PATH. Keep env var names (`VIM_AI_*`, `ANTHROPIC_API_KEY`, …) stable for SSH `SendEnv`.
 
 When a change needs coordinated updates in those repos, say so explicitly; do not silently diverge CLI flags.
 
