@@ -12,48 +12,48 @@ permissions:
 jobs:
   rpmbuild:
     name: Build RPM (${{ github.ref_name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Install build tools
         run: dnf install -y git rpm-build rpmdevtools python3
 
-      - name: Resolve version channel
+      - name: Resolve version, build, and stage RPMs
         id: ver
         run: |
+          set -euo pipefail
           chmod +x ./scripts/rpm-version.sh
-          ./scripts/rpm-version.sh --github-env
-          ./scripts/rpm-version.sh
-
-      - name: Prepare sources
-        run: |
           eval "$(./scripts/rpm-version.sh --shell)"
-          mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS
+          ./scripts/rpm-version.sh
+          {
+            echo "version=${VERSION}"
+            echo "release=${RELEASE}"
+            echo "channel=${CHANNEL}"
+          } >> "$GITHUB_OUTPUT"
+
+          mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS dist
           mkdir -p "/tmp/pack/vim-ai-helper-${VERSION}"
           cp -a vim-ai-helper agents.json.example README.md LICENSE \
             "/tmp/pack/vim-ai-helper-${VERSION}/"
           tar -C /tmp/pack -czf ~/rpmbuild/SOURCES/vim-ai-helper-${VERSION}.tar.gz \
             "vim-ai-helper-${VERSION}"
           cp vim-ai-helper.spec ~/rpmbuild/SPECS/
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
-          echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
 
-      - name: rpmbuild
-        run: |
+          # Satisfy BuildRequires and pass channel macros in the same step
+          dnf install -y python3
           rpmbuild -ba ~/rpmbuild/SPECS/vim-ai-helper.spec \
             --define "vim_ai_ver ${VERSION}" \
             --define "vim_ai_rel ${RELEASE}"
+          cp -a ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.rpm dist/
           echo "Built ${CHANNEL}: vim-ai-helper-${VERSION}-${RELEASE}"
+          ls -la dist/
 
       - name: Upload RPMs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vim-ai-helper-${{ steps.ver.outputs.channel }}-${{ steps.ver.outputs.version }}-${{ github.run_number }}
-          path: |
-            /github/home/rpmbuild/RPMS/**/*.rpm
-            /github/home/rpmbuild/SRPMS/*.rpm
+          path: dist/*

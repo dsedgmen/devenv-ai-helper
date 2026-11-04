@@ -16,23 +16,24 @@ permissions:
 jobs:
   build:
     name: Build release RPMs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: fedora:latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
       release: ${{ steps.meta.outputs.release }}
       channel: ${{ steps.meta.outputs.channel }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Install tools
         run: dnf install -y git rpm-build rpmdevtools python3
 
-      - name: Resolve and validate channel
+      - name: Resolve, build, stage
         id: meta
         run: |
+          set -euo pipefail
           chmod +x ./scripts/rpm-version.sh
           eval "$(./scripts/rpm-version.sh --shell)"
           echo "channel=$CHANNEL version=$VERSION release=$RELEASE"
@@ -48,12 +49,7 @@ jobs:
             echo "release=$RELEASE"
             echo "channel=$CHANNEL"
           } >> "$GITHUB_OUTPUT"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
-          echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
 
-      - name: rpmbuild
-        run: |
           mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS dist
           mkdir -p "/tmp/pack/vim-ai-helper-${VERSION}"
           cp -a vim-ai-helper agents.json.example README.md LICENSE \
@@ -67,7 +63,7 @@ jobs:
           cp -a ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.rpm dist/
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-rpms
           path: dist/*
@@ -75,10 +71,10 @@ jobs:
   github-release:
     name: Publish GitHub Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: ${{ !inputs.dry_run && startsWith(github.ref, 'refs/tags/') }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: release-rpms
           path: dist
@@ -87,7 +83,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: vim-ai-helper ${{ needs.build.outputs.version }}${{ needs.build.outputs.channel == 'rc' && ' (RC)' || '' }}
+          name: vim-ai-helper ${{ needs.build.outputs.version }}
           prerelease: ${{ needs.build.outputs.channel != 'stable' }}
           body: |
             Channel: **${{ needs.build.outputs.channel }}**

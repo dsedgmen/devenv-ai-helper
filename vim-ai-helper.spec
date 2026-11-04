@@ -1,6 +1,6 @@
 # Macros (set by CI / COPR Makefile / rpmbuild --define):
 #   vim_ai_ver  — RPM Version  (default: from VERSION file baseline)
-#   vim_ai_rel  — RPM Release without %{?dist}
+#   vim_ai_rel  — RPM Release without dist tag (%%{?dist} appended below)
 Name:           vim-ai-helper
 Version:        %{?vim_ai_ver}%{!?vim_ai_ver:1.1.0}
 Release:        %{?vim_ai_rel}%{!?vim_ai_rel:1}%{?dist}
@@ -11,7 +11,8 @@ URL:            https://github.com/dsedgmen/vim-ai-helper
 Source0:        %{name}-%{version}.tar.gz
 
 BuildArch:      noarch
-BuildRequires:  python3-devel
+# Pure script package — no compiled extensions
+BuildRequires:  python3
 
 Requires:       python3 >= 3.11
 Requires:       python3-openai
@@ -39,12 +40,12 @@ are stable. See RELEASE.md.
 %install
 install -D -m 0755 vim-ai-helper %{buildroot}%{_bindir}/vim-ai-helper
 install -D -m 0644 agents.json.example %{buildroot}%{_datadir}/vim-ai-helper/agents.json.example
-install -D -m 0644 README.md %{buildroot}%{_pkgdocdir}/README.md
 
 %files
 %{_bindir}/vim-ai-helper
 %{_datadir}/vim-ai-helper/agents.json.example
 %doc README.md
+%license LICENSE
 
 %changelog
 * Wed Nov 04 2026 David Sedgmen <dsedgmen@users.noreply.github.com> - 1.1.0-1

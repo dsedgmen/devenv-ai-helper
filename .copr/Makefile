@@ -9,6 +9,7 @@
 srpm:
 	dnf -y install git rpm-build rpmdevtools python3 2>/dev/null || \
 	  yum -y install git rpm-build rpmdevtools python3 2>/dev/null || true
+	# BuildRequires: python3 (satisfied above)
 	chmod +x ./scripts/rpm-version.sh
 	eval "$$(./scripts/rpm-version.sh --shell)"
 	mkdir -p $(outdir) /tmp/vim-ai-helper-src

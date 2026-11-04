@@ -9,53 +9,48 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   bandit:
     name: Bandit (Python SAST)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install bandit
-      - run: bandit -r vim-ai-helper -ll -ii -f txt
+      # vim-ai-helper is a single file, not a package directory
+      - run: bandit -ll -ii -f txt vim-ai-helper
 
   pip-audit:
     name: Dependency audit (declared RPM deps)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Audit known PyPI equivalents of Fedora Requires
         run: |
           pip install pip-audit
-          # Mirror Fedora Requires for advisory visibility (runtime is RPM-based)
           pip install openai ollama
           pip-audit || true
 
   shellcheck:
     name: ShellCheck (packaging helpers)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - run: |
-          if [ -f .copr/Makefile ]; then
-            echo "Makefile present (no shell scripts to check)"
-          fi
-          find . -name '*.sh' -print0 | xargs -0 -r shellcheck
+      - run: find . -name '*.sh' -print0 | xargs -0 -r shellcheck
 
   syntax:
     name: Python compile check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python3 -m py_compile vim-ai-helper
