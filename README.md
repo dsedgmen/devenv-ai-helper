@@ -1,5 +1,11 @@
 # vim-ai-helper
 
+[![RPM](https://github.com/dsedgmen/vim-ai-helper/actions/workflows/rpm.yml/badge.svg)](https://github.com/dsedgmen/vim-ai-helper/actions/workflows/rpm.yml)
+[![Security](https://github.com/dsedgmen/vim-ai-helper/actions/workflows/security.yml/badge.svg)](https://github.com/dsedgmen/vim-ai-helper/actions/workflows/security.yml)
+[![Release](https://github.com/dsedgmen/vim-ai-helper/actions/workflows/release.yml/badge.svg)](https://github.com/dsedgmen/vim-ai-helper/actions/workflows/release.yml)
+[![COPR](https://copr.fedorainfracloud.org/coprs/dsedgmen/Devenv/package/vim-ai-helper/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/dsedgmen/Devenv/package/vim-ai-helper/)
+[![GitHub release](https://img.shields.io/github/v/release/dsedgmen/vim-ai-helper?include_prereleases)](https://github.com/dsedgmen/vim-ai-helper/releases)
+
 CLI AI backend for Vim/Neovim with **agent routing** and configurable API endpoints.
 
 Standalone project (extracted from [vim-ai-assistant](https://github.com/dsedgmen/vim-ai-assistant)) so it can be packaged as a Fedora RPM and built on COPR.
