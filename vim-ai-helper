@@ -1,0 +1,608 @@
+#!/usr/bin/env python3
+"""
+vim-ai-helper — CLI AI backend for Vim/Neovim.
+
+Backends: ollama | claude | gemini | openai (OpenAI-compatible / internal APIs)
+Agent routing: named agents + per-command routes (config file or env).
+
+Fedora deps: python3-openai, python3-ollama (Recommends: python3-google-genai)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# ---------------------------------------------------------------------------
+# Defaults (overridden by agent config / env)
+# ---------------------------------------------------------------------------
+
+OLLAMA_MODEL = os.getenv("VIM_AI_OLLAMA_MODEL", "granite-code:latest")
+OLLAMA_HOST = os.getenv("VIM_AI_OLLAMA_HOST") or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+
+CLAUDE_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.getenv("VIM_AI_CLAUDE_MODEL", "claude-sonnet-4-5@20250929")
+CLAUDE_BASE_URL = (
+    os.getenv("VIM_AI_CLAUDE_BASE_URL")
+    or os.getenv("VIM_AI_BASE_URL")
+    or "https://api.anthropic.com/v1"
+)
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("VIM_AI_GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_BASE_URL = os.getenv("VIM_AI_GEMINI_BASE_URL") or os.getenv("VIM_AI_BASE_URL") or ""
+
+OPENAI_API_KEY = (
+    os.getenv("VIM_AI_API_KEY")
+    or os.getenv("OPENAI_API_KEY")
+    or os.getenv("ANTHROPIC_API_KEY")
+    or ""
+)
+OPENAI_BASE_URL = (
+    os.getenv("VIM_AI_OPENAI_BASE_URL")
+    or os.getenv("VIM_AI_BASE_URL")
+    or "https://api.openai.com/v1"
+)
+OPENAI_MODEL = os.getenv("VIM_AI_OPENAI_MODEL") or os.getenv("VIM_AI_MODEL") or "gpt-4o"
+
+DEFAULT_BACKEND = os.getenv("VIM_AI_BACKEND", "ollama")
+
+BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
+    "local": {"backend": "ollama"},
+    "claude": {"backend": "claude"},
+    "gemini": {"backend": "gemini"},
+    "internal": {"backend": "openai"},
+}
+
+# command -> agent name (overridable)
+DEFAULT_ROUTES: Dict[str, str] = {
+    "complete": "local",
+    "generate": "local",
+    "explain": "claude",
+    "review": "claude",
+    "refactor": "claude",
+    "chat": "claude",
+}
+
+COMMANDS = ("complete", "explain", "review", "refactor", "generate", "chat")
+
+
+def _config_paths() -> List[Path]:
+    paths: List[Path] = []
+    env = os.getenv("VIM_AI_AGENTS_FILE")
+    if env:
+        paths.append(Path(env))
+    paths.append(Path.home() / ".config" / "vim-ai-helper" / "agents.json")
+    paths.append(Path("/etc/vim-ai-helper/agents.json"))
+    return paths
+
+
+def load_agent_config() -> Dict[str, Any]:
+    """Load agents + routes from the first existing config file."""
+    cfg: Dict[str, Any] = {"agents": dict(BUILTIN_AGENTS), "routes": dict(DEFAULT_ROUTES)}
+    for path in _config_paths():
+        if not path.is_file():
+            continue
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data.get("agents"), dict):
+                cfg["agents"].update(data["agents"])
+            if isinstance(data.get("routes"), dict):
+                cfg["routes"].update(data["routes"])
+            cfg["_loaded_from"] = str(path)
+            break
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"Warning: failed to load {path}: {e}", file=sys.stderr)
+    # Env route overrides: VIM_AI_ROUTE_COMPLETE=local
+    for cmd in COMMANDS:
+        env_key = f"VIM_AI_ROUTE_{cmd.upper()}"
+        if os.getenv(env_key):
+            cfg["routes"][cmd] = os.environ[env_key]
+    if os.getenv("VIM_AI_AGENT"):
+        cfg["default_agent"] = os.environ["VIM_AI_AGENT"]
+    return cfg
+
+
+def resolve_agent(
+    command: str,
+    explicit_agent: Optional[str] = None,
+    explicit_backend: Optional[str] = None,
+    cfg: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Resolve which agent (backend/model/base_url) handles a command.
+
+    Priority:
+      1. --agent NAME
+      2. VIM_AI_AGENT
+      3. routes[command] from config / VIM_AI_ROUTE_*
+      4. explicit backend arg (legacy)
+      5. VIM_AI_BACKEND / default local
+    """
+    cfg = cfg or load_agent_config()
+    agents = cfg.get("agents") or BUILTIN_AGENTS
+    routes = cfg.get("routes") or DEFAULT_ROUTES
+
+    name: Optional[str] = None
+    if explicit_agent:
+        name = explicit_agent
+    elif cfg.get("default_agent"):
+        name = str(cfg["default_agent"])
+    elif command in routes:
+        name = str(routes[command])
+
+    if name:
+        if name not in agents:
+            return {
+                "name": name,
+                "backend": name if name in ("ollama", "claude", "gemini", "openai") else DEFAULT_BACKEND,
+                "error": f"Unknown agent '{name}' (known: {', '.join(sorted(agents))})",
+            }
+        agent = dict(agents[name])
+        agent["name"] = name
+        return agent
+
+    backend = explicit_backend or DEFAULT_BACKEND
+    return {"name": backend, "backend": backend}
+
+
+def _load_history(path: Optional[str]) -> List[Dict[str, str]]:
+    if not path:
+        return []
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, list):
+        return []
+    out = []
+    for item in data:
+        if isinstance(item, dict) and "role" in item and "content" in item:
+            out.append({"role": str(item["role"]), "content": str(item["content"])})
+    return out
+
+
+def _openai_compat_chat(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    prompt: str,
+    system: str = "",
+    stream: bool = False,
+    history: Optional[List[Dict[str, str]]] = None,
+    extra_headers: Optional[Dict[str, str]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
+) -> str:
+    if not api_key:
+        return "Error: API key not set (ANTHROPIC_API_KEY / VIM_AI_API_KEY / OPENAI_API_KEY)"
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        messages: List[Dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        if history:
+            for msg in history:
+                role = msg["role"]
+                if role == "system":
+                    continue
+                if role not in ("user", "assistant"):
+                    role = "user"
+                messages.append({"role": role, "content": msg["content"]})
+        messages.append({"role": "user", "content": prompt})
+
+        kwargs: Dict[str, Any] = {"model": model, "messages": messages, "stream": stream}
+        if extra_headers:
+            kwargs["extra_headers"] = extra_headers
+        if extra_body:
+            kwargs["extra_body"] = extra_body
+
+        response = client.chat.completions.create(**kwargs)
+        if stream:
+            full = ""
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    print(content, end="", flush=True)
+                    full += content
+            print()
+            return full
+        return response.choices[0].message.content or ""
+    except ImportError:
+        return "Error: python3-openai not installed. Run: sudo dnf install python3-openai"
+    except Exception as e:
+        return f"Error calling API at {base_url}: {e}"
+
+
+def get_ollama_response(
+    prompt: str,
+    system: str = "",
+    stream: bool = False,
+    history: Optional[List[Dict[str, str]]] = None,
+    *,
+    model: Optional[str] = None,
+    host: Optional[str] = None,
+) -> str:
+    try:
+        import ollama
+
+        client = ollama.Client(host=host or OLLAMA_HOST)
+        messages: List[Dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
+        response = client.chat(model=model or OLLAMA_MODEL, messages=messages, stream=stream)
+        if stream:
+            full = ""
+            for chunk in response:
+                content = chunk["message"]["content"]
+                print(content, end="", flush=True)
+                full += content
+            print()
+            return full
+        return response["message"]["content"]
+    except ImportError:
+        return "Error: python3-ollama not installed. Run: sudo dnf install python3-ollama"
+    except Exception as e:
+        return f"Error calling Ollama at {host or OLLAMA_HOST}: {e}"
+
+
+def get_claude_response(
+    prompt: str,
+    system: str = "",
+    stream: bool = False,
+    history: Optional[List[Dict[str, str]]] = None,
+    *,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> str:
+    url = base_url or CLAUDE_BASE_URL
+    key = api_key or CLAUDE_API_KEY or OPENAI_API_KEY
+    extra_headers = None
+    extra_body = None
+    system_for_messages = system
+    if "api.anthropic.com" in url:
+        extra_headers = {"anthropic-version": "2025-02-01"}
+        if system:
+            extra_body = {"system": system}
+            system_for_messages = ""
+    return _openai_compat_chat(
+        api_key=key,
+        base_url=url,
+        model=model or CLAUDE_MODEL,
+        prompt=prompt,
+        system=system_for_messages,
+        stream=stream,
+        history=history,
+        extra_headers=extra_headers,
+        extra_body=extra_body,
+    )
+
+
+def get_openai_response(
+    prompt: str,
+    system: str = "",
+    stream: bool = False,
+    history: Optional[List[Dict[str, str]]] = None,
+    *,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> str:
+    return _openai_compat_chat(
+        api_key=api_key or OPENAI_API_KEY,
+        base_url=base_url or OPENAI_BASE_URL,
+        model=model or OPENAI_MODEL,
+        prompt=prompt,
+        system=system,
+        stream=stream,
+        history=history,
+    )
+
+
+def get_gemini_response(
+    prompt: str,
+    system: str = "",
+    stream: bool = False,
+    history: Optional[List[Dict[str, str]]] = None,
+    *,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> str:
+    key = api_key or GEMINI_API_KEY
+    if not key:
+        return "Error: GEMINI_API_KEY environment variable not set"
+    try:
+        from google import genai
+
+        client_kwargs: Dict[str, Any] = {"api_key": key}
+        url = base_url if base_url is not None else GEMINI_BASE_URL
+        if url:
+            try:
+                from google.genai import types
+
+                client_kwargs["http_options"] = types.HttpOptions(base_url=url)
+            except Exception:
+                pass
+        client = genai.Client(**client_kwargs)
+        parts = []
+        if system:
+            parts.append(f"System: {system}")
+        if history:
+            for msg in history:
+                parts.append(f"{msg['role'].capitalize()}: {msg['content']}")
+        parts.append(f"User: {prompt}")
+        full_prompt = "\n\n".join(parts)
+        use_model = model or GEMINI_MODEL
+        if stream:
+            full = ""
+            for chunk in client.models.generate_content_stream(model=use_model, contents=full_prompt):
+                if chunk.text:
+                    print(chunk.text, end="", flush=True)
+                    full += chunk.text
+            print()
+            return full
+        response = client.models.generate_content(model=use_model, contents=full_prompt)
+        return response.text or ""
+    except ImportError:
+        return "Error: python3-google-genai not installed. Run: sudo dnf install python3-google-genai"
+    except Exception as e:
+        return f"Error calling Gemini: {e}"
+
+
+def get_ai_response(
+    prompt: str,
+    system: str = "",
+    backend: Optional[str] = None,
+    stream: bool = False,
+    history: Optional[List[Dict[str, str]]] = None,
+    agent: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Route to backend; agent dict may override model/base_url/api_key/system."""
+    agent = agent or {}
+    backend = agent.get("backend") or backend or DEFAULT_BACKEND
+    model = agent.get("model")
+    base_url = agent.get("base_url")
+    api_key = agent.get("api_key")
+    # Resolve api_key from env var name if provided as api_key_env
+    if not api_key and agent.get("api_key_env"):
+        api_key = os.getenv(str(agent["api_key_env"]), "")
+    if agent.get("system_prefix"):
+        system = f"{agent['system_prefix']}\n{system}" if system else str(agent["system_prefix"])
+
+    if backend == "claude":
+        return get_claude_response(
+            prompt, system, stream, history, model=model, base_url=base_url, api_key=api_key
+        )
+    if backend == "gemini":
+        return get_gemini_response(
+            prompt, system, stream, history, model=model, base_url=base_url, api_key=api_key
+        )
+    if backend in ("openai", "api", "internal"):
+        return get_openai_response(
+            prompt, system, stream, history, model=model, base_url=base_url, api_key=api_key
+        )
+    return get_ollama_response(
+        prompt, system, stream, history, model=model, host=agent.get("host") or base_url
+    )
+
+
+def complete_code(code: str, language: str = "", agent: Optional[Dict[str, Any]] = None) -> str:
+    system = (
+        "You are a code completion tool. Output ONLY valid code that continues "
+        "from where the input left off. NO explanations, NO markdown — just raw code."
+    )
+    prompt = f"Complete this {language} code. Output ONLY the continuation code:\n\n{code}\n\n"
+    return get_ai_response(prompt, system, agent=agent)
+
+
+def explain_code(code: str, language: str = "", agent: Optional[Dict[str, Any]] = None) -> str:
+    system = "You are an expert programmer. Explain code clearly and concisely."
+    return get_ai_response(f"Explain this {language} code:\n\n{code}", system, agent=agent)
+
+
+def review_code(code: str, language: str = "", agent: Optional[Dict[str, Any]] = None) -> str:
+    system = "You are an expert code reviewer. Find bugs, security issues, and suggest improvements."
+    prompt = f"Review this {language} code for bugs, security issues, and improvements:\n\n{code}"
+    return get_ai_response(prompt, system, agent=agent)
+
+
+def refactor_code(
+    code: str, instruction: str = "", language: str = "", agent: Optional[Dict[str, Any]] = None
+) -> str:
+    system = "You are an expert programmer. Output ONLY refactored code, no markdown fences."
+    base = f"Refactor this {language} code"
+    if instruction:
+        base += f" to {instruction}"
+    return get_ai_response(f"{base}:\n\n{code}\n\nRefactored code:", system, agent=agent)
+
+
+def generate_code(description: str, language: str = "", agent: Optional[Dict[str, Any]] = None) -> str:
+    system = "You are an expert programmer. Output ONLY code, no markdown fences."
+    return get_ai_response(f"Generate {language} code for: {description}\n\nCode:", system, agent=agent)
+
+
+def chat(
+    question: str,
+    context: str = "",
+    agent: Optional[Dict[str, Any]] = None,
+    history: Optional[List[Dict[str, str]]] = None,
+) -> str:
+    system = "You are an expert programming assistant. Answer clearly; include code when helpful."
+    prompt = question
+    if context:
+        prompt = f"Context:\n{context}\n\nQuestion: {question}"
+    return get_ai_response(prompt, system, stream=True, history=history or [], agent=agent)
+
+
+def cmd_agents(cfg: Dict[str, Any]) -> int:
+    agents = cfg.get("agents") or {}
+    routes = cfg.get("routes") or {}
+    src = cfg.get("_loaded_from", "(built-in defaults)")
+    print(f"Config: {src}")
+    print("\nAgents:")
+    for name in sorted(agents):
+        a = agents[name]
+        bits = [f"backend={a.get('backend', '?')}"]
+        if a.get("model"):
+            bits.append(f"model={a['model']}")
+        if a.get("base_url"):
+            bits.append(f"base_url={a['base_url']}")
+        print(f"  {name}: {', '.join(bits)}")
+    print("\nRoutes (command -> agent):")
+    for cmd in COMMANDS:
+        print(f"  {cmd}: {routes.get(cmd, '(default backend)')}")
+    if cfg.get("default_agent"):
+        print(f"\nDefault agent (VIM_AI_AGENT): {cfg['default_agent']}")
+    return 0
+
+
+def cmd_route(command: str, cfg: Dict[str, Any], agent_name: Optional[str] = None) -> int:
+    agent = resolve_agent(command, explicit_agent=agent_name, cfg=cfg)
+    print(json.dumps(agent, indent=2, sort_keys=True))
+    return 1 if agent.get("error") else 0
+
+
+def _usage() -> None:
+    print("Usage: vim-ai-helper [--agent NAME] <command> [options]", file=sys.stderr)
+    print("\nCommands:", file=sys.stderr)
+    print("  complete <file> <language> [backend]", file=sys.stderr)
+    print("  explain <file> <language> [backend]", file=sys.stderr)
+    print("  review <file> <language> [backend]", file=sys.stderr)
+    print("  refactor <file> <instruction> <lang> [backend]", file=sys.stderr)
+    print("  generate <description> <language> [backend]", file=sys.stderr)
+    print("  chat [--history json] <question> [context_file] [backend]", file=sys.stderr)
+    print("  agents                         List agents and routes", file=sys.stderr)
+    print("  route <command>                Show resolved agent for a command", file=sys.stderr)
+    print("\nAgent routing:", file=sys.stderr)
+    print("  --agent NAME | VIM_AI_AGENT | VIM_AI_ROUTE_<CMD> | agents.json", file=sys.stderr)
+    print("  Config: ~/.config/vim-ai-helper/agents.json or VIM_AI_AGENTS_FILE", file=sys.stderr)
+    print("\nBackends: ollama, claude, gemini, openai", file=sys.stderr)
+    print("  VIM_AI_BASE_URL / VIM_AI_CLAUDE_BASE_URL / VIM_AI_OLLAMA_HOST", file=sys.stderr)
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        _usage()
+        sys.exit(1)
+
+    argv = sys.argv[1:]
+    explicit_agent: Optional[str] = None
+    if "--agent" in argv:
+        idx = argv.index("--agent")
+        if idx + 1 >= len(argv):
+            print("Error: --agent requires a name", file=sys.stderr)
+            sys.exit(1)
+        explicit_agent = argv[idx + 1]
+        del argv[idx : idx + 2]
+
+    if not argv:
+        _usage()
+        sys.exit(1)
+
+    command = argv[0]
+    args = argv[1:]
+    cfg = load_agent_config()
+
+    if command == "agents":
+        sys.exit(cmd_agents(cfg))
+    if command == "route":
+        if not args:
+            print("Usage: vim-ai-helper route <command>", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(cmd_route(args[0], cfg, explicit_agent))
+
+    history: List[Dict[str, str]] = []
+    if "--history" in args:
+        idx = args.index("--history")
+        if idx + 1 >= len(args):
+            print("Error: --history requires a JSON file path", file=sys.stderr)
+            sys.exit(1)
+        history = _load_history(args[idx + 1])
+        del args[idx : idx + 2]
+
+    backends = {"ollama", "claude", "gemini", "openai", "api", "internal"}
+
+    def pick_agent(legacy_backend: Optional[str] = None) -> Dict[str, Any]:
+        agent = resolve_agent(command, explicit_agent=explicit_agent, explicit_backend=legacy_backend, cfg=cfg)
+        if agent.get("error"):
+            print(agent["error"], file=sys.stderr)
+            sys.exit(1)
+        if os.getenv("VIM_AI_DEBUG_ROUTE"):
+            print(f"# routed to agent={agent.get('name')} backend={agent.get('backend')}", file=sys.stderr)
+        return agent
+
+    try:
+        if command == "complete":
+            code_file, language = args[0], (args[1] if len(args) > 1 else "")
+            backend = args[2] if len(args) > 2 else None
+            with open(code_file, "r", encoding="utf-8") as f:
+                code = f.read()
+            print(complete_code(code, language, pick_agent(backend)))
+
+        elif command == "explain":
+            code_file, language = args[0], (args[1] if len(args) > 1 else "")
+            backend = args[2] if len(args) > 2 else None
+            with open(code_file, "r", encoding="utf-8") as f:
+                code = f.read()
+            print(explain_code(code, language, pick_agent(backend)))
+
+        elif command == "review":
+            code_file, language = args[0], (args[1] if len(args) > 1 else "")
+            backend = args[2] if len(args) > 2 else None
+            with open(code_file, "r", encoding="utf-8") as f:
+                code = f.read()
+            print(review_code(code, language, pick_agent(backend)))
+
+        elif command == "refactor":
+            code_file = args[0]
+            instruction = args[1] if len(args) > 1 else ""
+            language = args[2] if len(args) > 2 else ""
+            backend = args[3] if len(args) > 3 else None
+            with open(code_file, "r", encoding="utf-8") as f:
+                code = f.read()
+            print(refactor_code(code, instruction, language, pick_agent(backend)))
+
+        elif command == "generate":
+            description = args[0]
+            language = args[1] if len(args) > 1 else ""
+            backend = args[2] if len(args) > 2 else None
+            print(generate_code(description, language, pick_agent(backend)))
+
+        elif command == "chat":
+            question = args[0] if args else ""
+            context = ""
+            backend = None
+            rest = args[1:] if len(args) > 1 else []
+            if rest:
+                if rest[0] in backends:
+                    backend = rest[0]
+                else:
+                    with open(rest[0], "r", encoding="utf-8") as f:
+                        context = f.read()
+                    if len(rest) > 1:
+                        backend = rest[1]
+            print(chat(question, context, pick_agent(backend), history=history))
+
+        else:
+            print(f"Unknown command: {command}", file=sys.stderr)
+            sys.exit(1)
+
+    except FileNotFoundError as e:
+        print(f"File not found: {e.filename}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

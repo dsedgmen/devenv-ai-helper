@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*", "v*.*.*-rc.*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build RPMs but skip creating GitHub release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build release RPMs
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      release: ${{ steps.meta.outputs.release }}
+      channel: ${{ steps.meta.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        run: dnf install -y git rpm-build rpmdevtools python3
+
+      - name: Resolve and validate channel
+        id: meta
+        run: |
+          chmod +x ./scripts/rpm-version.sh
+          eval "$(./scripts/rpm-version.sh --shell)"
+          echo "channel=$CHANNEL version=$VERSION release=$RELEASE"
+          case "$CHANNEL" in
+            stable|rc) ;;
+            *)
+              echo "Tag/ref must resolve to stable or rc (got $CHANNEL)" >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "version=$VERSION"
+            echo "release=$RELEASE"
+            echo "channel=$CHANNEL"
+          } >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
+
+      - name: rpmbuild
+        run: |
+          mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS dist
+          mkdir -p "/tmp/pack/vim-ai-helper-${VERSION}"
+          cp -a vim-ai-helper agents.json.example README.md LICENSE \
+            "/tmp/pack/vim-ai-helper-${VERSION}/"
+          tar -C /tmp/pack -czf ~/rpmbuild/SOURCES/vim-ai-helper-${VERSION}.tar.gz \
+            "vim-ai-helper-${VERSION}"
+          cp vim-ai-helper.spec ~/rpmbuild/SPECS/
+          rpmbuild -ba ~/rpmbuild/SPECS/vim-ai-helper.spec \
+            --define "vim_ai_ver ${VERSION}" \
+            --define "vim_ai_rel ${RELEASE}"
+          cp -a ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.rpm dist/
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-rpms
+          path: dist/*
+
+  github-release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.dry_run && startsWith(github.ref, 'refs/tags/') }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-rpms
+          path: dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: vim-ai-helper ${{ needs.build.outputs.version }}${{ needs.build.outputs.channel == 'rc' && ' (RC)' || '' }}
+          prerelease: ${{ needs.build.outputs.channel != 'stable' }}
+          body: |
+            Channel: **${{ needs.build.outputs.channel }}**
+
+            RPM: `vim-ai-helper-${{ needs.build.outputs.version }}-${{ needs.build.outputs.release }}`
+
+            See [RELEASE.md](./RELEASE.md) for the version framework (`main` = beta; tags = stable/rc).
+          files: dist/*

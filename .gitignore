@@ -1,0 +1,56 @@
+# Build / packaging
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+rpms/
+SRPMS/
+RPMS/
+BUILD/
+BUILDROOT/
+*.rpm
+*.src.rpm
+
+# Secrets / credentials (never commit)
+.env
+.env.*
+!.env.example
+*.token
+*.pem
+*.key
+credentials.json
+secrets.yaml
+secrets.yml
+
+# Local agent / prompt config — can carry system_prefix prompt injection
+# Keep only agents.json.example in git
+agents.json
+**/agents.local.json
+prompts/
+prompt/
+*.prompt
+*.prompts
+*_prompt.txt
+*_prompt.md
+system_prompt*
+.system-prompt*
+
+# Chat / context dumps that may contain injected or untrusted text
+*.chat.json
+*-ai-history.json
+**/history.json
+context/
+*.context
+
+# Editor / tooling
+.idea/
+.vscode/
+*.swp
+*~
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/

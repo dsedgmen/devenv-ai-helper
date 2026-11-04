@@ -1,0 +1,32 @@
+{
+  "agents": {
+    "local": {
+      "backend": "ollama",
+      "model": "granite-code:latest",
+      "host": "http://127.0.0.1:11434"
+    },
+    "claude": {
+      "backend": "claude",
+      "model": "claude-sonnet-4-5@20250929"
+    },
+    "internal": {
+      "backend": "openai",
+      "base_url": "https://llm.internal.example/v1",
+      "model": "corp-model",
+      "api_key_env": "VIM_AI_API_KEY",
+      "system_prefix": "You are a corporate coding assistant. Follow internal style guides."
+    },
+    "reviewer": {
+      "backend": "claude",
+      "system_prefix": "Focus on security, correctness, and maintainability."
+    }
+  },
+  "routes": {
+    "complete": "local",
+    "generate": "local",
+    "explain": "internal",
+    "review": "reviewer",
+    "refactor": "internal",
+    "chat": "internal"
+  }
+}
