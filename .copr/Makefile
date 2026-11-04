@@ -21,6 +21,11 @@ srpm:
 	  ./scripts/rpm-version.sh >&2 || true
 	  exit 1
 	fi
+	# Guard against building the bare spec default (1.1.0-1) by mistake
+	if [[ "$${RELEASE}" == "1" && "$${CHANNEL}" != "stable" ]]; then
+	  echo "Refusing non-stable Release=1 (channel=$${CHANNEL})" >&2
+	  exit 1
+	fi
 	echo "channel=$${CHANNEL} version=$${VERSION} release=$${RELEASE}"
 	mkdir -p "$(outdir)"
 	rm -rf /tmp/vim-ai-helper-pack

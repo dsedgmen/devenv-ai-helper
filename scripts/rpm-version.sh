@@ -4,7 +4,7 @@
 # Channels:
 #   stable  — tag vX.Y.Z
 #   rc      — tag vX.Y.Z-rc.N  OR  branch release/* / release-*
-#   beta    — branch main (default development)
+#   beta    — branch main / untagged commits / no-git fallback (COPR SCM)
 #
 # Usage:
 #   ./scripts/rpm-version.sh              # human-readable
@@ -19,17 +19,40 @@ BASE="$(tr -d '[:space:]' < "$ROOT/VERSION")"
   exit 1
 }
 
+DATE="$(date -u +%Y%m%d)"
+
+# Default = beta snapshot (never silent 1.1.0-1 unless on a stable tag).
+# Plain Release "1" only happens for refs/tags/vX.Y.Z.
 VERSION="$BASE"
-RELEASE="1"
-CHANNEL="stable"
+CHANNEL="beta"
+SHORT="unknown"
+RELEASE="0.${DATE}git${SHORT}.beta"
 DIST_VERSION="$VERSION"
 
-if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+git_ok() {
+  git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
+# True if HEAD is main/master tip or an ancestor reachable from origin/main|main.
+on_main_line() {
+  local name="$1"
+  [[ "$name" == main || "$name" == master ]] && return 0
+  git -C "$ROOT" rev-parse --verify -q origin/main >/dev/null 2>&1 &&
+    git -C "$ROOT" merge-base --is-ancestor HEAD origin/main 2>/dev/null &&
+    [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$(git -C "$ROOT" rev-parse origin/main)" ]] &&
+    return 0
+  git -C "$ROOT" rev-parse --verify -q main >/dev/null 2>&1 &&
+    [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$(git -C "$ROOT" rev-parse main)" ]] &&
+    return 0
+  return 1
+}
+
+if git_ok; then
   REF="${GITHUB_REF:-}"
   REF_NAME="${GITHUB_REF_NAME:-}"
   SHA="${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD)}"
   SHORT="$(echo "$SHA" | cut -c1-7)"
-  DATE="$(date -u +%Y%m%d)"
+  RELEASE="0.${DATE}git${SHORT}.beta"
 
   if [[ -z "$REF" ]]; then
     if git -C "$ROOT" describe --exact-match --tags HEAD >/dev/null 2>&1; then
@@ -37,13 +60,29 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       REF="refs/tags/$REF_NAME"
     else
       REF_NAME="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+      # COPR often checks out a detached SHA from the webhook tip.
+      if [[ "$REF_NAME" == HEAD ]]; then
+        if on_main_line HEAD; then
+          REF_NAME="main"
+        elif git -C "$ROOT" rev-parse --verify -q origin/main >/dev/null 2>&1 &&
+          git -C "$ROOT" merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+          # Commit is on main history (not necessarily tip) → still beta
+          REF_NAME="main"
+        else
+          # Best-effort branch name from local/remote refs containing HEAD
+          REF_NAME="$(
+            git -C "$ROOT" for-each-ref --format='%(refname:short)' --contains HEAD \
+              refs/heads refs/remotes 2>/dev/null |
+              sed -e 's#^origin/##' |
+              grep -Ev '^(HEAD|origin)$' |
+              head -n1 || true
+          )"
+          REF_NAME="${REF_NAME:-snap}"
+        fi
+      fi
       REF="refs/heads/$REF_NAME"
     fi
   fi
-
-  CHANNEL="beta"
-  VERSION="$BASE"
-  RELEASE="0.${DATE}git${SHORT}.beta"
 
   if [[ "$REF" == refs/tags/* ]]; then
     TAG="${REF_NAME:-${REF#refs/tags/}}"
@@ -63,7 +102,7 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     CHANNEL="rc"
     VERSION="$BASE"
     RELEASE="0.${DATE}git${SHORT}.rc"
-  elif [[ "$REF_NAME" == main || "$REF_NAME" == master ]]; then
+  elif [[ "$REF_NAME" == main || "$REF_NAME" == master ]] || on_main_line "$REF_NAME"; then
     CHANNEL="beta"
     VERSION="$BASE"
     RELEASE="0.${DATE}git${SHORT}.beta"
@@ -75,6 +114,8 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 
   DIST_VERSION="$VERSION"
+else
+  echo "rpm-version.sh: no git metadata; using beta snapshot ${VERSION}-${RELEASE}" >&2
 fi
 
 case "${1:-}" in

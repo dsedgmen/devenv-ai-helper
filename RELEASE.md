@@ -18,20 +18,32 @@ Pre-stable sorts before stable in DNF (`0.*.beta` / `0.*.rc` < `1`).
 
 ## COPR webhook
 
-Point the COPR package webhook at this GitHub repo.
+Point the **project** webhook (Settings → Integrations) at this GitHub repo.
+There is no per-package webhook URL; with one package that is fine.
 
-- Builds of **`main`** → install as beta (webhook on push to main).
-- Builds of **tags** `v*` → stable/rc packages.
-- Optional: also watch **`release/**`** for RC snapshots.
+### Package settings (required for beta)
 
-The webhook invokes `.copr/Makefile` → `srpm`, which runs
-`scripts/rpm-version.sh` and passes macros into `rpmbuild`.
+In the COPR package edit form:
 
-Suggested COPR layout:
+| Field | Value |
+|-------|--------|
+| Source type | **SCM** |
+| Clone URL | `https://github.com/dsedgmen/vim-ai-helper.git` |
+| Committish | `main` (or leave empty for webhook tip) |
+| Spec File | `vim-ai-helper.spec` |
+| SRPM build method | **make_srpm** (uses `.copr/Makefile`) |
+| Auto-rebuild | **on** |
 
-- Project `vim-ai-helper` — webhook for tags only (stable), **or**
-- Project `vim-ai-helper` with package packing all refs, and users pin
-  `dnf copr enable …` knowing `main` produces `.beta` Release strings.
+If the method is **rpkg** / **tito** / “upload SRPM”, COPR uses the raw
+spec defaults → **`1.1.0-1`** (not beta). Beta only happens when
+`make_srpm` runs and passes `--define vim_ai_ver` / `vim_ai_rel`.
+
+- Push to **`main`** → `1.1.0-0.<date>git<sha>.beta`
+- Tags **`vX.Y.Z`** → `X.Y.Z-1` (stable)
+- Tags **`vX.Y.Z-rc.N`** / `release/*` → RC Release strings
+
+Suggested layout: one project packing all refs; users enable the COPR
+knowing `main` publishes `.beta` packages.
 
 ## GitHub Actions
 
