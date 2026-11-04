@@ -2,7 +2,11 @@ name: Release
 
 on:
   push:
-    tags: ["v*.*.*", "v*.*.*-rc.*"]
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-rc.*"
+      - "[0-9]*.[0-9]*.[0-9]*"
+      - "[0-9]*.[0-9]*.[0-9]*-rc.*"
   workflow_dispatch:
     inputs:
       dry_run:

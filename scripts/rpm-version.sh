@@ -2,8 +2,8 @@
 # Derive RPM Version / Release / channel from git ref.
 #
 # Channels:
-#   stable  — tag vX.Y.Z
-#   rc      — tag vX.Y.Z-rc.N  OR  branch release/* / release-*
+#   stable  — tag vX.Y.Z or X.Y.Z
+#   rc      — tag vX.Y.Z-rc.N / X.Y.Z-rc.N  OR  branch release/* / release-*
 #   beta    — branch main / untagged commits / no-git fallback (COPR SCM)
 #
 # Usage:
@@ -86,16 +86,17 @@ if git_ok; then
 
   if [[ "$REF" == refs/tags/* ]]; then
     TAG="${REF_NAME:-${REF#refs/tags/}}"
-    if [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+    # Accept v1.2.3 or 1.2.3 (and -rc.N variants)
+    if [[ "$TAG" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
       CHANNEL="stable"
       VERSION="${BASH_REMATCH[1]}"
       RELEASE="1"
-    elif [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
+    elif [[ "$TAG" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
       CHANNEL="rc"
       VERSION="${BASH_REMATCH[1]}"
       RELEASE="0.${BASH_REMATCH[2]}.rc${BASH_REMATCH[2]}git${SHORT}"
     else
-      echo "Unsupported tag '$TAG' (use vX.Y.Z or vX.Y.Z-rc.N)" >&2
+      echo "Unsupported tag '$TAG' (use X.Y.Z, vX.Y.Z, or …-rc.N)" >&2
       exit 1
     fi
   elif [[ "$REF" == refs/heads/release/* || "$REF_NAME" == release/* || "$REF_NAME" == release-* ]]; then

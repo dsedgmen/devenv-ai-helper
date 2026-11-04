@@ -8,8 +8,8 @@ Used by GitHub Actions, Packit, and **COPR webhooks** (`.copr/Makefile`).
 |---------|---------|----------------------------------|
 | Branch **`main`** | **beta** | `1.1.0-0.20261104gitabcdef.beta` |
 | Branch **`release/*`** or **`release-*`** | **rc** | `1.1.0-0.20261104gitabcdef.rc` |
-| Tag **`v1.2.3`** | **stable** | `1.2.3-1` |
-| Tag **`v1.2.3-rc.1`** | **rc** | `1.2.3-0.1.rc1gitabcdef` |
+| Tag **`v1.2.3`** or **`1.2.3`** | **stable** | `1.2.3-1` |
+| Tag **`v1.2.3-rc.1`** or **`1.2.3-rc.1`** | **rc** | `1.2.3-0.1.rc1gitabcdef` |
 
 Base `X.Y.Z` for beta/rc snapshots comes from the [`VERSION`](VERSION) file
 (next intended stable). Update `VERSION` when you start work toward a new release.
@@ -43,8 +43,12 @@ COPR’s binary rebuild does not re-apply our macros; an unbaked
 filename still ends in `.beta`.
 
 - Push to **`main`** → `1.1.0-0.<date>git<sha>.beta`
-- Tags **`vX.Y.Z`** → `X.Y.Z-1` (stable)
-- Tags **`vX.Y.Z-rc.N`** / `release/*` → RC Release strings
+- Tags **`vX.Y.Z`** or **`X.Y.Z`** → `X.Y.Z-1` (stable)
+- Tags **`…-rc.N`** / `release/*` → RC Release strings
+
+A tag points at a **commit**. COPR builds that commit’s tree — so the tag must
+sit on a revision that already includes the current `.copr/Makefile`. After
+fixing packaging, move/recreate the tag onto the fixed commit before rebuilding.
 
 Suggested layout: one project packing all refs; users enable the COPR
 knowing `main` publishes `.beta` packages.
@@ -62,7 +66,7 @@ knowing `main` publishes `.beta` packages.
 1. Ensure `VERSION` matches the release you will tag (e.g. `1.2.0`).
 2. Merge to `main` (continues publishing **beta** builds).
 3. Optional RC: tag `v1.2.0-rc.1` or push `release/1.2`.
-4. Stable: `git tag -a v1.2.0 -m "vim-ai-helper 1.2.0" && git push origin v1.2.0`
+4. Stable: tag `v1.2.0` **or** `1.2.0` on the commit that has the packaging you want, then push the tag.
 5. Bump `VERSION` on `main` to the next patch/minor (e.g. `1.2.1` or `1.3.0`) so betas stay ahead of the just-released tag.
 
 ## Local version check
