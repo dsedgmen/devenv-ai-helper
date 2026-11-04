@@ -58,16 +58,53 @@ knowing `main` publishes `.beta` packages.
 | Workflow | Trigger | Output |
 |----------|---------|--------|
 | `rpm.yml` | `main`, `release/**`, PRs | Artifact RPMs labeled by channel |
-| `release.yml` | tags `v*` | GitHub Release + stable/rc RPMs attached |
+| `release.yml` | version tags (see below) | **GitHub Release** + RPM assets |
 | `security.yml` | push/PR | Bandit / compile / route smoke |
+
+### Automating GitHub Releases
+
+Nothing extra to enable: [`.github/workflows/release.yml`](.github/workflows/release.yml)
+runs on tag push (and can be run manually via **Actions → Release → Run workflow**).
+
+On a matching tag it will:
+
+1. Resolve channel via `scripts/rpm-version.sh` (`stable` or `rc` only).
+2. Build binary + source RPMs in a Fedora container.
+3. Create a GitHub Release named `vim-ai-helper <version>`, attach the RPMs,
+   and mark **pre-release** when the channel is `rc`.
+
+Tag patterns that trigger it:
+
+- `v1.2.3` / `1.2.3` → stable release  
+- `v1.2.3-rc.1` / `1.2.3-rc.1` → pre-release  
+
+Uses the default `GITHUB_TOKEN` (`permissions: contents: write`). No secrets to add
+unless the repo blocks workflow runs on tags.
+
+COPR is separate: the same tag push can also hit the COPR webhook if configured.
 
 ## How to cut a release
 
-1. Ensure `VERSION` matches the release you will tag (e.g. `1.2.0`).
-2. Merge to `main` (continues publishing **beta** builds).
-3. Optional RC: tag `v1.2.0-rc.1` or push `release/1.2`.
-4. Stable: tag `v1.2.0` **or** `1.2.0` on the commit that has the packaging you want, then push the tag.
-5. Bump `VERSION` on `main` to the next patch/minor (e.g. `1.2.1` or `1.3.0`) so betas stay ahead of the just-released tag.
+```bash
+# 1. main is green; VERSION file = the version you are about to ship
+git checkout main && git pull
+echo 1.2.0 > VERSION   # if not already
+git add VERSION && git commit -m "Set VERSION 1.2.0" && git push
+
+# 2. Tag the commit you want shipped (must include current packaging)
+git tag -a 1.2.0 -m "vim-ai-helper 1.2.0"
+git push origin 1.2.0
+# → Actions "Release" workflow creates the GitHub Release + RPM assets
+# → COPR rebuilds if the project webhook is set
+
+# 3. Bump baseline for following betas
+echo 1.2.1 > VERSION
+git add VERSION && git commit -m "Bump VERSION to 1.2.1" && git push
+```
+
+Re-run without a new tag: **Actions → Release → Run workflow** (optional dry-run
+builds RPMs only). To refresh an existing tag’s release, delete/move the tag onto
+the fixed commit and `git push origin <tag>` again (force-push tag if it moved).
 
 ## Local version check
 
