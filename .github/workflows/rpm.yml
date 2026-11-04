@@ -15,15 +15,20 @@ jobs:
     runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
       - name: Install build tools
         run: dnf install -y git rpm-build rpmdevtools python3
 
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Resolve version, build, and stage RPMs
         id: ver
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           chmod +x ./scripts/rpm-version.sh

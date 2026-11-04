@@ -27,15 +27,22 @@ jobs:
       release: ${{ steps.meta.outputs.release }}
       channel: ${{ steps.meta.outputs.channel }}
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
+      # actions/checkout needs git in the container or it drops a tarball with no .git
       - name: Install tools
         run: dnf install -y git rpm-build rpmdevtools python3
 
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Resolve, build, stage
         id: meta
+        env:
+          # Ensure tag/branch is visible even if .git is incomplete
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           chmod +x ./scripts/rpm-version.sh
@@ -60,10 +67,16 @@ jobs:
             "/tmp/pack/vim-ai-helper-${VERSION}/"
           tar -C /tmp/pack -czf ~/rpmbuild/SOURCES/vim-ai-helper-${VERSION}.tar.gz \
             "vim-ai-helper-${VERSION}"
-          cp vim-ai-helper.spec ~/rpmbuild/SPECS/
-          rpmbuild -ba ~/rpmbuild/SPECS/vim-ai-helper.spec \
-            --define "vim_ai_ver ${VERSION}" \
-            --define "vim_ai_rel ${RELEASE}"
+
+          # Bake Version/Release (same reason as COPR: no macros on later rebuilds)
+          qmark='?'
+          dist_suffix="%{${qmark}dist}"
+          sed \
+            -e "s/^Version:.*/Version:        ${VERSION}/" \
+            -e "s/^Release:.*/Release:        ${RELEASE}${dist_suffix}/" \
+            vim-ai-helper.spec > ~/rpmbuild/SPECS/vim-ai-helper.spec
+
+          rpmbuild -ba ~/rpmbuild/SPECS/vim-ai-helper.spec
           cp -a ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.rpm dist/
 
       - name: Upload dist
