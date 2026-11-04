@@ -35,8 +35,12 @@ In the COPR package edit form:
 | Auto-rebuild | **on** |
 
 If the method is **rpkg** / **tito** / “upload SRPM”, COPR uses the raw
-spec defaults → **`1.1.0-1`** (not beta). Beta only happens when
-`make_srpm` runs and passes `--define vim_ai_ver` / `vim_ai_rel`.
+spec defaults → **`1.1.0-1`** (not beta).
+
+`make_srpm` **bakes** `Version` / `Release` into the spec inside the SRPM.
+COPR’s binary rebuild does not re-apply our macros; an unbaked
+`%{!?vim_ai_rel:1}` spec becomes **`1.1.0-1`** even when the SRPM
+filename still ends in `.beta`.
 
 - Push to **`main`** → `1.1.0-0.<date>git<sha>.beta`
 - Tags **`vX.Y.Z`** → `X.Y.Z-1` (stable)
