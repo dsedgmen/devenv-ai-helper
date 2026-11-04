@@ -1,14 +1,9 @@
----
-description: How coding agents must work in the vim-ai-helper repo
-alwaysApply: true
----
-
-# vim-ai-helper agent rules
+# devenv-ai-helper agent rules
 
 Follow [AGENTS.md](../../AGENTS.md) in full. Summary:
 
 - Fedora RPM deps only for runtime (`python3-openai`, `python3-ollama`; optional `python3-google-genai`). No pip-only runtime deps.
 - Never commit secrets, local `agents.json`, `*.prompt`, `prompts/`, or chat/history dumps. Keep `agents.json.example` safe and non-injected.
-- Preserve CLI commands and `VIM_AI_*` env contract used by vim-ai-assistant, vim-ai-packaging, and devenv.
+- Preserve CLI commands and `DEVENV_AI_*` env contract (with `VIM_AI_*` fallback) used by devenv-ai-assistant, devenv-ai-packaging, and devenv. Keep `vim-ai-helper` symlink.
 - Do not weaken `.gitignore`, Bandit/CI, or Packit current-Fedora targets.
-- Verify with `python3 -m py_compile vim-ai-helper`, `./vim-ai-helper agents`, `./vim-ai-helper route complete`.
+- Verify with `python3 -m py_compile devenv-ai-helper`, `./devenv-ai-helper agents`, `./devenv-ai-helper route complete`.

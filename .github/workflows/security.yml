@@ -20,8 +20,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install bandit
-      # vim-ai-helper is a single file, not a package directory
-      - run: bandit -ll -ii -f txt vim-ai-helper
+      # devenv-ai-helper is a single file, not a package directory
+      - run: bandit -ll -ii -f txt devenv-ai-helper
 
   pip-audit:
     name: Dependency audit (declared RPM deps)
@@ -53,6 +53,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: python3 -m py_compile vim-ai-helper
-      - run: ./vim-ai-helper agents
-      - run: ./vim-ai-helper route complete
+      - run: python3 -m py_compile devenv-ai-helper
+      - run: ./devenv-ai-helper agents
+      - run: ./devenv-ai-helper route complete

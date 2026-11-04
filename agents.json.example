@@ -13,7 +13,7 @@
       "backend": "openai",
       "base_url": "https://llm.internal.example/v1",
       "model": "corp-model",
-      "api_key_env": "VIM_AI_API_KEY",
+      "api_key_env": "DEVENV_AI_API_KEY",
       "system_prefix": "You are a corporate coding assistant. Follow internal style guides."
     },
     "reviewer": {

@@ -62,11 +62,11 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS dist
-          mkdir -p "/tmp/pack/vim-ai-helper-${VERSION}"
-          cp -a vim-ai-helper agents.json.example README.md LICENSE \
-            "/tmp/pack/vim-ai-helper-${VERSION}/"
-          tar -C /tmp/pack -czf ~/rpmbuild/SOURCES/vim-ai-helper-${VERSION}.tar.gz \
-            "vim-ai-helper-${VERSION}"
+          mkdir -p "/tmp/pack/devenv-ai-helper-${VERSION}"
+          cp -a devenv-ai-helper agents.json.example README.md LICENSE \
+            "/tmp/pack/devenv-ai-helper-${VERSION}/"
+          tar -C /tmp/pack -czf ~/rpmbuild/SOURCES/devenv-ai-helper-${VERSION}.tar.gz \
+            "devenv-ai-helper-${VERSION}"
 
           # Bake Version/Release (same reason as COPR: no macros on later rebuilds)
           qmark='?'
@@ -74,9 +74,9 @@ jobs:
           sed \
             -e "s/^Version:.*/Version:        ${VERSION}/" \
             -e "s/^Release:.*/Release:        ${RELEASE}${dist_suffix}/" \
-            vim-ai-helper.spec > ~/rpmbuild/SPECS/vim-ai-helper.spec
+            devenv-ai-helper.spec > ~/rpmbuild/SPECS/devenv-ai-helper.spec
 
-          rpmbuild -ba ~/rpmbuild/SPECS/vim-ai-helper.spec
+          rpmbuild -ba ~/rpmbuild/SPECS/devenv-ai-helper.spec
           cp -a ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.rpm dist/
 
       - name: Upload dist
@@ -100,12 +100,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: vim-ai-helper ${{ needs.build.outputs.version }}
+          name: devenv-ai-helper ${{ needs.build.outputs.version }}
           prerelease: ${{ needs.build.outputs.channel != 'stable' }}
           body: |
             Channel: **${{ needs.build.outputs.channel }}**
 
-            RPM: `vim-ai-helper-${{ needs.build.outputs.version }}-${{ needs.build.outputs.release }}`
+            RPM: `devenv-ai-helper-${{ needs.build.outputs.version }}-${{ needs.build.outputs.release }}`
 
             See [RELEASE.md](./RELEASE.md) for the version framework (`main` = beta; tags = stable/rc).
           files: dist/*

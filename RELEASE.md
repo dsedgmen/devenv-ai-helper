@@ -28,9 +28,9 @@ In the COPR package edit form:
 | Field | Value |
 |-------|--------|
 | Source type | **SCM** |
-| Clone URL | `https://github.com/dsedgmen/vim-ai-helper.git` |
+| Clone URL | `https://github.com/dsedgmen/devenv-ai-helper.git` |
 | Committish | `main` (or leave empty for webhook tip) |
-| Spec File | `vim-ai-helper.spec` |
+| Spec File | `devenv-ai-helper.spec` |
 | SRPM build method | **make_srpm** (uses `.copr/Makefile`) |
 | Auto-rebuild | **on** |
 
@@ -39,7 +39,7 @@ spec defaults → **`1.1.0-1`** (not beta).
 
 `make_srpm` **bakes** `Version` / `Release` into the spec inside the SRPM.
 COPR’s binary rebuild does not re-apply our macros; an unbaked
-`%{!?vim_ai_rel:1}` spec becomes **`1.1.0-1`** even when the SRPM
+`%{!?devenv_ai_rel:1}` spec becomes **`1.1.0-1`** even when the SRPM
 filename still ends in `.beta`.
 
 - Push to **`main`** → `1.1.0-0.<date>git<sha>.beta`
@@ -70,7 +70,7 @@ On a matching tag it will:
 
 1. Resolve channel via `scripts/rpm-version.sh` (`stable` or `rc` only).
 2. Build binary + source RPMs in a Fedora container.
-3. Create a GitHub Release named `vim-ai-helper <version>`, attach the RPMs,
+3. Create a GitHub Release named `devenv-ai-helper <version>`, attach the RPMs,
    and mark **pre-release** when the channel is `rc`.
 
 Tag patterns that trigger it:
@@ -92,7 +92,7 @@ echo 1.2.0 > VERSION   # if not already
 git add VERSION && git commit -m "Set VERSION 1.2.0" && git push
 
 # 2. Tag the commit you want shipped (must include current packaging)
-git tag -a 1.2.0 -m "vim-ai-helper 1.2.0"
+git tag -a 1.2.0 -m "devenv-ai-helper 1.2.0"
 git push origin 1.2.0
 # → Actions "Release" workflow creates the GitHub Release + RPM assets
 # → COPR rebuilds if the project webhook is set

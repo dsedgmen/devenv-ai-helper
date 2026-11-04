@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-vim-ai-helper — CLI AI backend for Vim/Neovim.
+devenv-ai-helper — CLI AI backend for Vim/Neovim (formerly vim-ai-helper).
 
 Backends: ollama | claude | gemini | openai (OpenAI-compatible / internal APIs)
 Agent routing: named agents + per-command routes (config file or env).
+
+Env: prefer DEVENV_AI_*; fall back to VIM_AI_* during transition.
 
 Fedora deps: python3-openai, python3-ollama (Recommends: python3-google-genai)
 """
@@ -16,39 +18,49 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+
+def _env_ai(suffix: str, default: Optional[str] = None) -> Optional[str]:
+    """Prefer DEVENV_AI_<suffix>, then legacy VIM_AI_<suffix>."""
+    for key in (f"DEVENV_AI_{suffix}", f"VIM_AI_{suffix}"):
+        val = os.getenv(key)
+        if val is not None and val != "":
+            return val
+    return default
+
+
 # ---------------------------------------------------------------------------
 # Defaults (overridden by agent config / env)
 # ---------------------------------------------------------------------------
 
-OLLAMA_MODEL = os.getenv("VIM_AI_OLLAMA_MODEL", "granite-code:latest")
-OLLAMA_HOST = os.getenv("VIM_AI_OLLAMA_HOST") or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+OLLAMA_MODEL = _env_ai("OLLAMA_MODEL", "granite-code:latest") or "granite-code:latest"
+OLLAMA_HOST = _env_ai("OLLAMA_HOST") or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
 
 CLAUDE_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = os.getenv("VIM_AI_CLAUDE_MODEL", "claude-sonnet-4-5@20250929")
+CLAUDE_MODEL = _env_ai("CLAUDE_MODEL", "claude-sonnet-4-5@20250929") or "claude-sonnet-4-5@20250929"
 CLAUDE_BASE_URL = (
-    os.getenv("VIM_AI_CLAUDE_BASE_URL")
-    or os.getenv("VIM_AI_BASE_URL")
+    _env_ai("CLAUDE_BASE_URL")
+    or _env_ai("BASE_URL")
     or "https://api.anthropic.com/v1"
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("VIM_AI_GEMINI_MODEL", "gemini-2.0-flash")
-GEMINI_BASE_URL = os.getenv("VIM_AI_GEMINI_BASE_URL") or os.getenv("VIM_AI_BASE_URL") or ""
+GEMINI_MODEL = _env_ai("GEMINI_MODEL", "gemini-2.0-flash") or "gemini-2.0-flash"
+GEMINI_BASE_URL = _env_ai("GEMINI_BASE_URL") or _env_ai("BASE_URL") or ""
 
 OPENAI_API_KEY = (
-    os.getenv("VIM_AI_API_KEY")
+    _env_ai("API_KEY")
     or os.getenv("OPENAI_API_KEY")
     or os.getenv("ANTHROPIC_API_KEY")
     or ""
 )
 OPENAI_BASE_URL = (
-    os.getenv("VIM_AI_OPENAI_BASE_URL")
-    or os.getenv("VIM_AI_BASE_URL")
+    _env_ai("OPENAI_BASE_URL")
+    or _env_ai("BASE_URL")
     or "https://api.openai.com/v1"
 )
-OPENAI_MODEL = os.getenv("VIM_AI_OPENAI_MODEL") or os.getenv("VIM_AI_MODEL") or "gpt-4o"
+OPENAI_MODEL = _env_ai("OPENAI_MODEL") or _env_ai("MODEL") or "gpt-4o"
 
-DEFAULT_BACKEND = os.getenv("VIM_AI_BACKEND", "ollama")
+DEFAULT_BACKEND = _env_ai("BACKEND", "ollama") or "ollama"
 
 BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
     "local": {"backend": "ollama"},
@@ -72,10 +84,12 @@ COMMANDS = ("complete", "explain", "review", "refactor", "generate", "chat")
 
 def _config_paths() -> List[Path]:
     paths: List[Path] = []
-    env = os.getenv("VIM_AI_AGENTS_FILE")
+    env = _env_ai("AGENTS_FILE")
     if env:
         paths.append(Path(env))
+    paths.append(Path.home() / ".config" / "devenv-ai-helper" / "agents.json")
     paths.append(Path.home() / ".config" / "vim-ai-helper" / "agents.json")
+    paths.append(Path("/etc/devenv-ai-helper/agents.json"))
     paths.append(Path("/etc/vim-ai-helper/agents.json"))
     return paths
 
@@ -97,13 +111,14 @@ def load_agent_config() -> Dict[str, Any]:
             break
         except (OSError, json.JSONDecodeError) as e:
             print(f"Warning: failed to load {path}: {e}", file=sys.stderr)
-    # Env route overrides: VIM_AI_ROUTE_COMPLETE=local
+    # Env route overrides: DEVENV_AI_ROUTE_COMPLETE=local (VIM_AI_* fallback)
     for cmd in COMMANDS:
-        env_key = f"VIM_AI_ROUTE_{cmd.upper()}"
-        if os.getenv(env_key):
-            cfg["routes"][cmd] = os.environ[env_key]
-    if os.getenv("VIM_AI_AGENT"):
-        cfg["default_agent"] = os.environ["VIM_AI_AGENT"]
+        route = _env_ai(f"ROUTE_{cmd.upper()}")
+        if route:
+            cfg["routes"][cmd] = route
+    agent = _env_ai("AGENT")
+    if agent:
+        cfg["default_agent"] = agent
     return cfg
 
 
@@ -118,10 +133,10 @@ def resolve_agent(
 
     Priority:
       1. --agent NAME
-      2. VIM_AI_AGENT
-      3. routes[command] from config / VIM_AI_ROUTE_*
+      2. DEVENV_AI_AGENT (or VIM_AI_AGENT)
+      3. routes[command] from config / DEVENV_AI_ROUTE_* (or VIM_AI_ROUTE_*)
       4. explicit backend arg (legacy)
-      5. VIM_AI_BACKEND / default local
+      5. DEVENV_AI_BACKEND (or VIM_AI_BACKEND) / default local
     """
     cfg = cfg or load_agent_config()
     agents = cfg.get("agents") or BUILTIN_AGENTS
@@ -177,7 +192,7 @@ def _openai_compat_chat(
     extra_body: Optional[Dict[str, Any]] = None,
 ) -> str:
     if not api_key:
-        return "Error: API key not set (ANTHROPIC_API_KEY / VIM_AI_API_KEY / OPENAI_API_KEY)"
+        return "Error: API key not set (ANTHROPIC_API_KEY / DEVENV_AI_API_KEY / OPENAI_API_KEY)"
     try:
         from openai import OpenAI
 
@@ -461,7 +476,7 @@ def cmd_agents(cfg: Dict[str, Any]) -> int:
     for cmd in COMMANDS:
         print(f"  {cmd}: {routes.get(cmd, '(default backend)')}")
     if cfg.get("default_agent"):
-        print(f"\nDefault agent (VIM_AI_AGENT): {cfg['default_agent']}")
+        print(f"\nDefault agent (DEVENV_AI_AGENT): {cfg['default_agent']}")
     return 0
 
 
@@ -472,7 +487,7 @@ def cmd_route(command: str, cfg: Dict[str, Any], agent_name: Optional[str] = Non
 
 
 def _usage() -> None:
-    print("Usage: vim-ai-helper [--agent NAME] <command> [options]", file=sys.stderr)
+    print("Usage: devenv-ai-helper [--agent NAME] <command> [options]", file=sys.stderr)
     print("\nCommands:", file=sys.stderr)
     print("  complete <file> <language> [backend]", file=sys.stderr)
     print("  explain <file> <language> [backend]", file=sys.stderr)
@@ -483,10 +498,10 @@ def _usage() -> None:
     print("  agents                         List agents and routes", file=sys.stderr)
     print("  route <command>                Show resolved agent for a command", file=sys.stderr)
     print("\nAgent routing:", file=sys.stderr)
-    print("  --agent NAME | VIM_AI_AGENT | VIM_AI_ROUTE_<CMD> | agents.json", file=sys.stderr)
-    print("  Config: ~/.config/vim-ai-helper/agents.json or VIM_AI_AGENTS_FILE", file=sys.stderr)
+    print("  --agent NAME | DEVENV_AI_AGENT | DEVENV_AI_ROUTE_<CMD> | agents.json", file=sys.stderr)
+    print("  Config: ~/.config/devenv-ai-helper/agents.json or DEVENV_AI_AGENTS_FILE", file=sys.stderr)
     print("\nBackends: ollama, claude, gemini, openai", file=sys.stderr)
-    print("  VIM_AI_BASE_URL / VIM_AI_CLAUDE_BASE_URL / VIM_AI_OLLAMA_HOST", file=sys.stderr)
+    print("  DEVENV_AI_BASE_URL / DEVENV_AI_CLAUDE_BASE_URL / DEVENV_AI_OLLAMA_HOST", file=sys.stderr)
 
 
 def main() -> None:
@@ -516,7 +531,7 @@ def main() -> None:
         sys.exit(cmd_agents(cfg))
     if command == "route":
         if not args:
-            print("Usage: vim-ai-helper route <command>", file=sys.stderr)
+            print("Usage: devenv-ai-helper route <command>", file=sys.stderr)
             sys.exit(1)
         sys.exit(cmd_route(args[0], cfg, explicit_agent))
 
@@ -536,7 +551,7 @@ def main() -> None:
         if agent.get("error"):
             print(agent["error"], file=sys.stderr)
             sys.exit(1)
-        if os.getenv("VIM_AI_DEBUG_ROUTE"):
+        if _env_ai("DEBUG_ROUTE"):
             print(f"# routed to agent={agent.get('name')} backend={agent.get('backend')}", file=sys.stderr)
         return agent
 

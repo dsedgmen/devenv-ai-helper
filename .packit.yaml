@@ -1,16 +1,16 @@
 # Packit → Fedora COPR
 # main = beta snapshots; tags = stable/rc (also see COPR webhook + RELEASE.md)
 
-specfile_path: vim-ai-helper.spec
+specfile_path: devenv-ai-helper.spec
 
 files_to_sync:
-  - vim-ai-helper.spec
+  - devenv-ai-helper.spec
   - .packit.yaml
   - VERSION
   - scripts/rpm-version.sh
 
-upstream_package_name: vim-ai-helper
-downstream_package_name: vim-ai-helper
+upstream_package_name: devenv-ai-helper
+downstream_package_name: devenv-ai-helper
 
 actions:
   # Packit asks for upstream version string
