@@ -9,6 +9,7 @@
 # - Bake Version/Release into the spec shipped in the SRPM. COPR rebuilds
 #   binaries from that spec WITHOUT our --define macros; leaving
 #   %{!?vim_ai_rel:1} produces 1.1.0-1 even when the SRPM filename is .beta.
+# - Do not put the make automatic variable $? in the recipe (breaks %{?dist}).
 
 SHELL := /bin/bash
 .ONESHELL:
@@ -31,13 +32,20 @@ srpm:
 	fi
 	echo "channel=$${CHANNEL} version=$${VERSION} release=$${RELEASE}"
 
-	# Literal Version/Release so binary rebuilds keep the beta/rc/stable EVR
+	# Avoid make's $$? eating "%{?dist}" — build the dist suffix in the shell.
+	qmark='?'
+	dist_suffix="%{$${qmark}dist}"
+
 	SPEC_BUILT=/tmp/vim-ai-helper-built.spec
 	sed \
 	  -e "s/^Version:.*/Version:        $${VERSION}/" \
-	  -e "s/^Release:.*/Release:        $${RELEASE}%{?dist}/" \
+	  -e "s/^Release:.*/Release:        $${RELEASE}$${dist_suffix}/" \
 	  vim-ai-helper.spec > "$${SPEC_BUILT}"
 	grep -E '^(Version|Release):' "$${SPEC_BUILT}"
+	if grep -E '^(Version|Release):' "$${SPEC_BUILT}" | grep -q 'vim_ai_'; then
+	  echo "ERROR: baked spec still references vim_ai_* macros" >&2
+	  exit 1
+	fi
 
 	mkdir -p "$(outdir)"
 	rm -rf /tmp/vim-ai-helper-pack
@@ -55,12 +63,4 @@ srpm:
 	  --define "_sourcedir /tmp" \
 	  --define "_srcrpmdir $(outdir)"
 	echo "Built SRPM channel=$${CHANNEL} $${VERSION}-$${RELEASE}"
-	# Sanity: shipped spec must not still carry conditional macro defaults
-	tmpdir=$$(mktemp -d)
-	rpm2cpio "$(outdir)"/vim-ai-helper-*.src.rpm | (cd "$$tmpdir" && cpio -id --quiet)
-	if grep -E '^(Version|Release):' "$$tmpdir"/*.spec | grep -q 'vim_ai_'; then
-	  echo "ERROR: SRPM Version/Release still use vim_ai_* macros; binaries would be 1.1.0-1" >&2
-	  exit 1
-	fi
-	grep -E '^(Version|Release):' "$$tmpdir"/*.spec
-	rm -rf "$$tmpdir"
+	ls -la "$(outdir)"/vim-ai-helper-*.src.rpm
