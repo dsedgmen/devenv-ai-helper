@@ -11,7 +11,7 @@ This file is **for developers/agents modifying the project**. It is not the runt
 (complete, explain, review, refactor, generate, chat). It routes those calls to
 Ollama / Claude / Gemini / OpenAI-compatible APIs, including internal gateways.
 
-Consumers: `devenv-ai-assistant` (editor), `devenv-ai-packaging` (images/Flatpak),
+Consumers: `devenv-ai-assistant` (editor), `devenv-packager` (images/Flatpak),
 `devenv` images/VMs, and local installs via RPM or `~/.local/bin`.
 
 ## Non-negotiable constraints
@@ -73,7 +73,7 @@ Consumers: `devenv-ai-assistant` (editor), `devenv-ai-packaging` (images/Flatpak
 
 - **devenv-ai-assistant** — editor configs; PATH/RPM/sibling-resolve this binary.
 - **devenv-lsp-setup** — LSP/Treesitter/plugins (not this CLI).
-- **devenv-ai-packaging** — stages this binary into container/Flatpak build context via `prepare-build-context.sh`.
+- **devenv-packager** — stages this binary into container/Flatpak build context via `prepare-build-context.sh`.
 - **devenv** — stages or installs the helper into isolated envs from sibling/`DEVENV_AI_HELPER_DIR`/PATH. Keep env var names (`DEVENV_AI_*`, with `VIM_AI_*` fallback, `ANTHROPIC_API_KEY`, …) stable for SSH `SendEnv`.
 
 When a change needs coordinated updates in those repos, say so explicitly; do not silently diverge CLI flags.

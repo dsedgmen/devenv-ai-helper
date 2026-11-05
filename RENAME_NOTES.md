@@ -4,7 +4,7 @@
 
 - `devenv-ai-assistant` (was `vim-ai-assistant`)
 - `devenv-ai-helper` (was `vim-ai-helper`)
-- `devenv-ai-packaging` (was `vim-ai-packaging`)
+- `devenv-packager` (was `devenv-packager`)
 - `devenv-lsp-setup` (new)
 - `devenv` (unchanged name)
 
@@ -14,7 +14,7 @@
 |------|-----|
 | devenv-ai-assistant | https://github.com/dsedgmen/devenv-ai-assistant |
 | devenv-ai-helper | https://github.com/dsedgmen/devenv-ai-helper |
-| devenv-ai-packaging | https://github.com/dsedgmen/devenv-ai-packaging |
+| devenv-packager | https://github.com/dsedgmen/devenv-packager |
 | devenv-lsp-setup | https://github.com/dsedgmen/devenv-lsp-setup |
 
 ## GitLab CEE (done)
@@ -37,4 +37,4 @@ export DEVENV_AI_OLLAMA_MODEL=granite-code:latest
 
 ## Still optional
 
-- Old ghcr tags under `vim-ai-packaging` — leave or delete after cutover.
+- Old ghcr tags under `devenv-packager` — leave or delete after cutover.
