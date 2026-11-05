@@ -3,7 +3,7 @@
 [![RPM](https://github.com/dsedgmen/devenv-ai-helper/actions/workflows/rpm.yml/badge.svg)](https://github.com/dsedgmen/devenv-ai-helper/actions/workflows/rpm.yml)
 [![Security](https://github.com/dsedgmen/devenv-ai-helper/actions/workflows/security.yml/badge.svg)](https://github.com/dsedgmen/devenv-ai-helper/actions/workflows/security.yml)
 [![Release](https://github.com/dsedgmen/devenv-ai-helper/actions/workflows/release.yml/badge.svg)](https://github.com/dsedgmen/devenv-ai-helper/actions/workflows/release.yml)
-[![COPR](https://copr.fedorainfracloud.org/coprs/dsedgmen/Devenv/package/devenv-ai-helper/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/dsedgmen/Devenv/package/devenv-ai-helper/)
+[![COPR](https://copr.fedorainfracloud.org/coprs/dsedgmen/devenv/package/devenv-ai-helper/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/dsedgmen/devenv/package/devenv-ai-helper/)
 [![GitHub release](https://img.shields.io/github/v/release/dsedgmen/devenv-ai-helper?include_prereleases)](https://github.com/dsedgmen/devenv-ai-helper/releases)
 
 CLI AI backend for Vim/Neovim with **agent routing** and configurable API endpoints.
