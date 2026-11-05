@@ -124,6 +124,7 @@ Full process: **[RELEASE.md](RELEASE.md)**.
 | Project | Role |
 |---------|------|
 | [devenv-ai-assistant](https://github.com/dsedgmen/devenv-ai-assistant) | Vim/Neovim configs that invoke this CLI |
+| [devenv-lsp-setup](https://github.com/dsedgmen/devenv-lsp-setup) | Host LSP/Treesitter/plugins (separate from this CLI) |
 | [devenv-ai-packaging](https://github.com/dsedgmen/devenv-ai-packaging) | Container/Flatpak builds (stages this binary) |
 | [devenv](https://github.com/dsedgmen/devenv) | Stages helper into images/VMs |
 
